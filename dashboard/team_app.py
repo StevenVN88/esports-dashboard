@@ -303,49 +303,53 @@ with tab_players:
 # =====================================================
 
 with tab_heroes:
-    st.caption("⚠️ Hero analytics chỉ sử dụng dữ liệu **Ranked** (Game_Mode='Ranked')")
-    st.caption("📊 Số trận = COUNT(DISTINCT BattleID)")
+    st.caption("⚠️ Hero analytics — dữ liệu của team, tất cả mode")
+    st.caption("📊 Lượt chơi = COUNT(*) — player workload")
 
-    section_header("📋 Bảng Tổng Hợp Tướng (Ranked)")
+    section_header("📋 Bảng Tổng Hợp Tướng")
     df_hero_all = con.execute(f"""
-        SELECT HeroName AS "Tướng", SUM(UniqueMatches) AS "Trận",
-            ROUND(SUM(WinRate * UniqueMatches) / NULLIF(SUM(UniqueMatches), 0), 2) AS "WR%",
-            ROUND(SUM(MVPRate * UniqueMatches) / NULLIF(SUM(UniqueMatches), 0), 2) AS "MVP%",
-            ROUND(SUM(AvgDamage * UniqueMatches) / NULLIF(SUM(UniqueMatches), 0), 0) AS "Damage TB",
-            ROUND(SUM(AvgGold * UniqueMatches) / NULLIF(SUM(UniqueMatches), 0), 0) AS "Gold TB"
-        FROM report_hero_daily WHERE GameDate {date_between}
-        GROUP BY HeroName HAVING SUM(UniqueMatches) > 0 ORDER BY "Trận" DESC
+        SELECT HeroName AS "Tướng", SUM(PlayerGames) AS "Lượt chơi",
+            ROUND(SUM(WinRate * PlayerGames) / NULLIF(SUM(PlayerGames), 0), 2) AS "WR%",
+            ROUND(SUM(KDA * PlayerGames) / NULLIF(SUM(PlayerGames), 0), 2) AS "KDA",
+            ROUND(SUM(MVPRate * PlayerGames) / NULLIF(SUM(PlayerGames), 0), 2) AS "MVP%"
+        FROM report_player_hero
+        WHERE Team = '{selected_team}' {srv_filter} AND GameDate {date_between}
+        GROUP BY HeroName HAVING SUM(PlayerGames) > 0 ORDER BY "Lượt chơi" DESC
     """).fetchdf()
     df_hero_all.insert(0, "Avatar", df_hero_all["Tướng"].map(hero_icon_map))
 
     if len(df_hero_all) > 0:
         hk1, hk2, hk3 = st.columns(3)
         with hk1: st.markdown(kpi_card("Tướng Được Chơi", f"{len(df_hero_all)}", "", COLORS["primary"]), unsafe_allow_html=True)
-        with hk2: st.markdown(kpi_card("Tổng Trận Ranked", f"{int(df_hero_all['Trận'].sum()):,}", "", COLORS["info"]), unsafe_allow_html=True)
-        with hk3: st.markdown(kpi_card("Tướng Hot Nhất", df_hero_all["Tướng"].iloc[0], f"{int(df_hero_all['Trận'].iloc[0])} trận", COLORS["success"]), unsafe_allow_html=True)
+        with hk2: st.markdown(kpi_card("Tổng Lượt Chơi", f"{int(df_hero_all['Lượt chơi'].sum()):,}", "", COLORS["info"]), unsafe_allow_html=True)
+        with hk3: st.markdown(kpi_card("Tướng Hot Nhất", df_hero_all["Tướng"].iloc[0], f"{int(df_hero_all['Lượt chơi'].iloc[0])} lượt", COLORS["success"]), unsafe_allow_html=True)
 
         col_h1, col_h2 = st.columns(2)
         with col_h1:
-            fig_pick = px.bar(df_hero_all.head(15), x="Trận", y="Tướng", orientation="h", color="WR%", color_continuous_scale=["#e17055", "#fdcb6e", "#00cec9"], title="Top 15 — Pick Rate", labels={"Trận": "Số trận", "Tướng": ""})
+            fig_pick = px.bar(df_hero_all.head(15), x="Lượt chơi", y="Tướng", orientation="h", color="WR%", color_continuous_scale=["#e17055", "#fdcb6e", "#00cec9"], title="Top 15 — Pick Rate", labels={"Lượt chơi": "Lượt chơi", "Tướng": ""})
             fig_pick.update_layout(**plotly_layout(height=480, coloraxis_showscale=False)); fig_pick.update_yaxes(autorange="reversed")
             st.plotly_chart(fig_pick, use_container_width=True)
         with col_h2:
-            df_wr_f = df_hero_all[df_hero_all["Trận"] >= 5].sort_values("WR%", ascending=False).head(15)
-            fig_wr = px.bar(df_wr_f, x="WR%", y="Tướng", orientation="h", color="MVP%", color_continuous_scale=["#6c5ce7", "#a29bfe", "#fdcb6e"], title="Top 15 — Win Rate (≥5 trận)", labels={"WR%": "WinRate %", "Tướng": ""})
+            df_wr_f = df_hero_all[df_hero_all["Lượt chơi"] >= 5].sort_values("WR%", ascending=False).head(15)
+            fig_wr = px.bar(df_wr_f, x="WR%", y="Tướng", orientation="h", color="MVP%", color_continuous_scale=["#6c5ce7", "#a29bfe", "#fdcb6e"], title="Top 15 — Win Rate (≥5 lượt)", labels={"WR%": "WinRate %", "Tướng": ""})
             fig_wr.update_layout(**plotly_layout(height=480, coloraxis_showscale=False)); fig_wr.update_yaxes(autorange="reversed")
             st.plotly_chart(fig_wr, use_container_width=True)
 
         st.dataframe(df_hero_all, use_container_width=True, hide_index=True, column_config={
             "Avatar": st.column_config.ImageColumn("Avatar", width="small"),
+            "Lượt chơi": st.column_config.NumberColumn("Lượt chơi", format="%d"),
             "WR%": st.column_config.ProgressColumn("WR%", min_value=0, max_value=100, format="%.1f%%"),
+            "KDA": st.column_config.NumberColumn("KDA", format="%.2f"),
             "MVP%": st.column_config.ProgressColumn("MVP%", min_value=0, max_value=100, format="%.1f%%"),
-            "Damage TB": st.column_config.NumberColumn("Damage TB", format="%d"),
-            "Gold TB": st.column_config.NumberColumn("Gold TB", format="%d"),
         })
 
     st.markdown("---")
     section_header("🔍 Chi Tiết Tướng")
-    heroes_list = con.execute("SELECT DISTINCT HeroName FROM hero WHERE HeroName IS NOT NULL ORDER BY HeroName").fetchdf()["HeroName"].tolist()
+    heroes_list = con.execute(f"""
+        SELECT DISTINCT HeroName FROM report_player_hero
+        WHERE Team = '{selected_team}' AND GameDate {date_between} AND HeroName IS NOT NULL
+        ORDER BY HeroName
+    """).fetchdf()["HeroName"].tolist()
     selected_hero = st.selectbox("Chọn tướng", heroes_list)
 
     if selected_hero:
@@ -356,36 +360,37 @@ with tab_heroes:
             with hinfo: st.markdown(f"### {selected_hero}")
 
         df_hk = con.execute(f"""
-            SELECT SUM(UniqueMatches) AS Matches,
-                ROUND(SUM(WinRate * UniqueMatches) / NULLIF(SUM(UniqueMatches), 0), 2) AS WinRate,
-                ROUND(SUM(MVPRate * UniqueMatches) / NULLIF(SUM(UniqueMatches), 0), 2) AS MVPRate,
-                ROUND(SUM(AvgDamage * UniqueMatches) / NULLIF(SUM(UniqueMatches), 0), 0) AS AvgDamage,
-                ROUND(SUM(AvgGold * UniqueMatches) / NULLIF(SUM(UniqueMatches), 0), 0) AS AvgGold
-            FROM report_hero_daily WHERE HeroName = '{selected_hero}' AND GameDate {date_between}
+            SELECT SUM(PlayerGames) AS Matches,
+                ROUND(SUM(WinRate * PlayerGames) / NULLIF(SUM(PlayerGames), 0), 2) AS WinRate,
+                ROUND(SUM(KDA * PlayerGames) / NULLIF(SUM(PlayerGames), 0), 2) AS KDA,
+                ROUND(SUM(MVPRate * PlayerGames) / NULLIF(SUM(PlayerGames), 0), 2) AS MVPRate
+            FROM report_player_hero
+            WHERE Team = '{selected_team}' {srv_filter}
+              AND HeroName = '{selected_hero}' AND GameDate {date_between}
         """).fetchdf()
 
-        hm=int(safe_val(df_hk,"Matches")); hw=safe_val(df_hk,"WinRate"); hmvp=safe_val(df_hk,"MVPRate"); h_dmg=int(safe_val(df_hk,"AvgDamage")); h_gold=int(safe_val(df_hk,"AvgGold"))
-        hd1, hd2, hd3, hd4, hd5 = st.columns(5)
-        with hd1: st.markdown(kpi_card("Trận Ranked", f"{hm}", "", COLORS["primary"]), unsafe_allow_html=True)
+        hm=int(safe_val(df_hk,"Matches")); hw=safe_val(df_hk,"WinRate")
+        h_kda=safe_val(df_hk,"KDA"); hmvp=safe_val(df_hk,"MVPRate")
+        hd1, hd2, hd3, hd4 = st.columns(4)
+        with hd1: st.markdown(kpi_card("Lượt Chơi", f"{hm}", "", COLORS["primary"]), unsafe_allow_html=True)
         with hd2: st.markdown(kpi_card("WinRate", f"{hw}%", "", COLORS["success"] if hw >= 50 else COLORS["danger"]), unsafe_allow_html=True)
-        with hd3: st.markdown(kpi_card("MVP Rate", f"{hmvp}%", "", COLORS["accent"]), unsafe_allow_html=True)
-        with hd4: st.markdown(kpi_card("Damage TB", f"{h_dmg:,}", "", COLORS["danger"]), unsafe_allow_html=True)
-        with hd5: st.markdown(kpi_card("Gold TB", f"{h_gold:,}", "", COLORS["warning"]), unsafe_allow_html=True)
+        with hd3: st.markdown(kpi_card("KDA", f"{h_kda}", "", COLORS["warning"]), unsafe_allow_html=True)
+        with hd4: st.markdown(kpi_card("MVP Rate", f"{hmvp}%", "", COLORS["accent"]), unsafe_allow_html=True)
 
-        df_ht = con.execute(f"SELECT GameDate, UniqueMatches AS Matches, WinRate, AvgDamage, AvgGold FROM report_hero_daily WHERE HeroName = '{selected_hero}' AND GameDate {date_between} ORDER BY GameDate").fetchdf()
+        df_ht = con.execute(f"""
+            SELECT GameDate, SUM(PlayerGames) AS Matches,
+                ROUND(SUM(WinRate * PlayerGames) / NULLIF(SUM(PlayerGames), 0), 2) AS WinRate
+            FROM report_player_hero
+            WHERE Team = '{selected_team}' {srv_filter}
+              AND HeroName = '{selected_hero}' AND GameDate {date_between}
+            GROUP BY GameDate ORDER BY GameDate
+        """).fetchdf()
         if len(df_ht) > 0:
             fig_ht = go.Figure()
-            fig_ht.add_trace(go.Bar(x=df_ht["GameDate"], y=df_ht["Matches"], name="Số trận", marker_color=COLORS["primary"], opacity=0.6))
+            fig_ht.add_trace(go.Bar(x=df_ht["GameDate"], y=df_ht["Matches"], name="Lượt chơi", marker_color=COLORS["primary"], opacity=0.6))
             fig_ht.add_trace(go.Scatter(x=df_ht["GameDate"], y=df_ht["WinRate"], name="WinRate %", mode="lines+markers", line=dict(color=COLORS["success"], width=2), yaxis="y2"))
-            fig_ht.update_layout(**plotly_layout(height=350, title=f"Xu Hướng — {selected_hero}", yaxis=dict(title="Số trận", gridcolor="rgba(100,100,160,0.15)", zeroline=False), yaxis2=dict(title="WinRate %", overlaying="y", side="right", showgrid=False, range=[0, 100]), legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0, bgcolor="rgba(0,0,0,0)")))
+            fig_ht.update_layout(**plotly_layout(height=350, title=f"Xu Hướng — {selected_hero}", yaxis=dict(title="Lượt chơi", gridcolor="rgba(100,100,160,0.15)", zeroline=False), yaxis2=dict(title="WinRate %", overlaying="y", side="right", showgrid=False, range=[0, 100]), legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0, bgcolor="rgba(0,0,0,0)")))
             st.plotly_chart(fig_ht, use_container_width=True)
-
-            section_header("💥 Damage / Gold Theo Ngày")
-            fig_he = go.Figure()
-            fig_he.add_trace(go.Scatter(x=df_ht["GameDate"], y=df_ht["AvgDamage"], name="Damage TB", mode="lines+markers", line=dict(color=COLORS["danger"], width=2), marker=dict(size=4)))
-            fig_he.add_trace(go.Scatter(x=df_ht["GameDate"], y=df_ht["AvgGold"], name="Gold TB", mode="lines+markers", line=dict(color=COLORS["warning"], width=2), marker=dict(size=4)))
-            fig_he.update_layout(**plotly_layout(height=280, yaxis=dict(title="Giá trị", gridcolor="rgba(100,100,160,0.15)", zeroline=False), legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0, bgcolor="rgba(0,0,0,0)")))
-            st.plotly_chart(fig_he, use_container_width=True)
 
 # =====================================================
 # MATCH HISTORY TAB
