@@ -57,7 +57,9 @@ selected_team = TOKEN_MAP[token_param]
 
 st.markdown("""
 <style>
-    #MainMenu {visibility: hidden;} header {visibility: hidden;} footer {visibility: hidden;}
+    #MainMenu {visibility: hidden;} footer {visibility: hidden;}
+    /* Giữ header visible để nút mở sidebar hoạt động */
+    header {visibility: visible !important; height: auto !important;}
     @import url('https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&display=swap');
     html, body, [class*="css"] { font-family: 'Be Vietnam Pro', sans-serif; }
     [data-testid="stSidebar"] { background: linear-gradient(180deg, #0f0f1a 0%, #1a1a2e 100%); }

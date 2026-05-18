@@ -31,8 +31,9 @@ st.set_page_config(
 st.markdown("""
 <style>
     #MainMenu {visibility: hidden;}
-    header {visibility: hidden;}
     footer {visibility: hidden;}
+    /* Giữ header visible để nút mở sidebar hoạt động */
+    header {visibility: visible !important; height: auto !important;}
 
     @import url('https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&display=swap');
 
