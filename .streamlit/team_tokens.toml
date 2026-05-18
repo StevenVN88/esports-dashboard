@@ -1,0 +1,14 @@
+# Team access tokens
+# Format: token = team_name
+# Tạo token ngẫu nhiên, gửi cho mỗi team owner
+# Đổi token bất cứ lúc nào để revoke access
+
+[tokens]
+bx7Kf9mQ2vL = "BOX"
+sP3nWj8rY6t = "BSS"
+fT5aHc1dN4x = "FPT"
+gR9eUi6wB2k = "SGP"
+qZ4oMl3pX8s = "SPN"
+hV7yDj5nC1f = "FPL"
+wE2uKg8mA9b = "TDT"
+tN6xRi4cF3v = "1S"
