@@ -8,7 +8,11 @@ from datetime import datetime, timedelta
 # CONFIG & CONNECTION
 # =====================================================
 
-DB_PATH = r"D:\EsportsAI\db\esports.duckdb"
+import os
+
+DB_PATH = "db/esports.duckdb"
+if not os.path.exists(DB_PATH):
+    DB_PATH = r"D:\EsportsAI\db\esports.duckdb"
 
 st.set_page_config(
     page_title="Esports Analytics",
