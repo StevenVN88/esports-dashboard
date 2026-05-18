@@ -10,7 +10,9 @@ from datetime import datetime, timedelta
 
 import os
 
-DB_PATH = "db/esports.duckdb"
+# Auto-detect DB path: cloud vs local
+_dir = os.path.dirname(os.path.abspath(__file__))
+DB_PATH = os.path.join(_dir, "..", "db", "esports.duckdb")
 if not os.path.exists(DB_PATH):
     DB_PATH = r"D:\EsportsAI\db\esports.duckdb"
 
