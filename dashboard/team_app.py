@@ -162,7 +162,7 @@ with st.sidebar:
     st.markdown("<div style='text-align:center; color:#555; font-size:11px;'>Timezone: Asia/Ho_Chi_Minh<br>Team Dashboard</div>", unsafe_allow_html=True)
 
 srv_filter = build_server_filter(selected_server)
-date_between = f"BETWEEN '{start_date}' AND '{end_date}'"
+date_between = f"BETWEEN '{start_date.isoformat()}' AND '{end_date.isoformat()}'"
 
 tab_overview, tab_players, tab_heroes, tab_history, tab_compare, tab_profile, tab_behavior, tab_rank = st.tabs([
     "📊 Tổng Quan", "👤 Tuyển Thủ", "⚔️ Tướng", "📜 Lịch Sử Trận", "🔀 So Sánh", "🗒️ Hồ Sơ", "⚠️ Hành Vi", "🏅 Rank"

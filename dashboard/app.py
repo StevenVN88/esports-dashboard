@@ -245,7 +245,7 @@ with st.sidebar:
     )
 
 srv_filter = build_server_filter(selected_server)
-date_between = f"BETWEEN '{start_date}' AND '{end_date}'"
+date_between = f"BETWEEN '{start_date.isoformat()}' AND '{end_date.isoformat()}'"
 
 # =====================================================
 # TABS (added: Lịch Sử Trận, So Sánh)
