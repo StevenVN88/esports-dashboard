@@ -162,14 +162,31 @@ def build_server_filter(selected_server, col_name="Server"):
     return f"AND {col_name} = '{selected_server}'"
 
 def safe_val(df, col, idx=0, default=0):
+
     try:
+
+        if df is None:
+            return default
+
+        if len(df) == 0:
+            return default
+
+        if col not in df.columns:
+            return default
+
         v = df[col].iloc[idx]
+
         if v is None:
             return default
-        return v
-    except (IndexError, KeyError):
-        return default
 
+        # Handle NaN
+        if str(v).lower() == "nan":
+            return default
+
+        return v
+
+    except Exception:
+        return default
 # =====================================================
 # DATABASE CONNECTION
 # =====================================================

@@ -99,12 +99,39 @@ def build_server_filter(selected_server, col_name="Server"):
     return f"AND {col_name} = '{selected_server}'"
 
 def safe_val(df, col, idx=0, default=0):
-    try:
-        v = df[col].iloc[idx]
-        return default if v is None else v
-    except (IndexError, KeyError):
-        return default
 
+    try:
+
+        # dataframe null
+        if df is None:
+            return default
+
+        # dataframe empty
+        if len(df) == 0:
+            return default
+
+        # column missing
+        if col not in df.columns:
+            return default
+
+        v = df[col].iloc[idx]
+
+        # null
+        if v is None:
+            return default
+
+        # nan
+        if str(v).lower() == "nan":
+            return default
+
+        # numpy nan
+        if isinstance(v, float) and np.isnan(v):
+            return default
+
+        return v
+
+    except Exception:
+        return default
 @st.cache_resource
 def get_connection():
     return duckdb.connect(DB_PATH, read_only=True)
