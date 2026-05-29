@@ -162,6 +162,26 @@ def build_server_filter(selected_server, col_name="Server"):
         return ""
     return f"AND {col_name} = '{selected_server}'"
 
+def build_team_filter(selected_team, col_name="Team"):
+    if selected_team == "ALL":
+        return ""
+    return f"AND {col_name} = '{selected_team}'"
+
+def player_option_list(con, team_filter, show_team):
+    df = con.execute(f"""
+        SELECT DISTINCT Player, Team FROM player_accounts
+        WHERE 1=1 {team_filter} AND Player IS NOT NULL
+        ORDER BY Team, Player
+    """).fetchdf()
+    if show_team:
+        return [f"{t} — {p}" for p, t in zip(df["Player"], df["Team"])]
+    return df["Player"].tolist()
+
+def parse_player_name(label):
+    if isinstance(label, str) and " — " in label:
+        return label.split(" — ", 1)[1]
+    return label
+
 def safe_val(df, col, idx=0, default=0):
 
     try:
@@ -217,13 +237,13 @@ hero_icon_map = load_hero_icons()
 # INSIGHT BOT — rotating data-driven facts (pure DuckDB, no API)
 # =====================================================
 
-def _fact_form(con, team, date_between):
+def _fact_form(con, team_filter, date_between):
     df = con.execute(f"""
         SELECT SUM(PlayerGames) AS TotalGames,
             ROUND(SUM(WinRate * PlayerGames) / NULLIF(SUM(PlayerGames), 0), 2) AS WinRate,
             ROUND(SUM(KDA * PlayerGames) / NULLIF(SUM(PlayerGames), 0), 2) AS KDA
         FROM report_team_daily
-        WHERE Team = '{team}' AND GameDate {date_between}
+        WHERE 1=1 {team_filter} AND GameDate {date_between}
     """).fetchdf()
     tg = int(safe_val(df, "TotalGames"))
     if tg == 0:
@@ -258,11 +278,11 @@ def _fact_form(con, team, date_between):
         ]))
     return " ".join(parts)
 
-def _fact_grinder(con, team, date_between):
+def _fact_grinder(con, team_filter, date_between):
     df = con.execute(f"""
         SELECT Player, SUM(PlayerGames) AS Games, SUM(RankedGames) AS Ranked
         FROM report_player_daily
-        WHERE Team = '{team}' AND GameDate {date_between}
+        WHERE 1=1 {team_filter} AND GameDate {date_between}
         GROUP BY Player ORDER BY Games DESC
     """).fetchdf()
     if len(df) == 0:
@@ -275,7 +295,7 @@ def _fact_grinder(con, team, date_between):
         text += f" 🔥 Cày ranked 40+ trận: {names}."
     return text
 
-def _fact_recent(con, team):
+def _fact_recent(con, team_filter):
     today = datetime.now().date()
     d1 = (today - timedelta(days=1)).isoformat()
     d3 = (today - timedelta(days=3)).isoformat()
@@ -286,7 +306,7 @@ def _fact_recent(con, team):
             SUM(CASE WHEN GameDate >= '{d3}' THEN PlayerGames ELSE 0 END) AS g3,
             SUM(CASE WHEN GameDate >= '{d7}' THEN PlayerGames ELSE 0 END) AS g7
         FROM report_player_daily
-        WHERE Team = '{team}'
+        WHERE 1=1 {team_filter}
     """).fetchdf()
     g1, g3, g7 = int(safe_val(agg, "g1")), int(safe_val(agg, "g3")), int(safe_val(agg, "g7"))
     if g7 == 0:
@@ -294,7 +314,7 @@ def _fact_recent(con, team):
     top = con.execute(f"""
         SELECT Player, Account, SUM(PlayerGames) AS Games
         FROM report_player_daily
-        WHERE Team = '{team}' AND GameDate >= '{d7}'
+        WHERE 1=1 {team_filter} AND GameDate >= '{d7}'
         GROUP BY Player, Account ORDER BY Games DESC LIMIT 1
     """).fetchdf()
     text = f"7 ngày qua: <b>{g7}</b> lượt (3 ngày: {g3}, hôm qua: {g1})."
@@ -303,7 +323,7 @@ def _fact_recent(con, team):
         text += f" Chăm nhất: <b>{r['Player']}</b> ({r['Account']}) với {int(r['Games'])} lượt."
     return text
 
-def _fact_rankdrop(con, team, srv_filter):
+def _fact_rankdrop(con, team_filter_p, srv_filter):
     d7 = (datetime.now().date() - timedelta(days=7)).isoformat()
     df = con.execute(f"""
         WITH ordered AS (
@@ -317,7 +337,7 @@ def _fact_rankdrop(con, team, srv_filter):
         WHERE o.prev_rank IS NOT NULL
           AND o.Rank_After < o.prev_rank
           AND o.Date_Time::DATE >= '{d7}'
-          AND p.Team = '{team}' {srv_filter}
+          {team_filter_p} {srv_filter}
         ORDER BY o.Date_Time DESC LIMIT 1
     """).fetchdf()
     if len(df) > 0:
@@ -325,12 +345,12 @@ def _fact_rankdrop(con, team, srv_filter):
         return f"⚠️ <b>{r['Player']}</b> bị xuống hạng gần đây tại account {r['Account']}."
     return "✅ Không có tuyển thủ nào xuống hạng trong 7 ngày qua."
 
-def _fact_hero(con, team, srv_filter, date_between):
+def _fact_hero(con, team_filter, srv_filter, date_between):
     df = con.execute(f"""
         SELECT Player, HeroName, SUM(PlayerGames) AS Games,
             ROUND(SUM(WinRate * PlayerGames) / NULLIF(SUM(PlayerGames), 0), 1) AS WinRate
         FROM report_player_hero
-        WHERE Team = '{team}' {srv_filter} AND GameDate {date_between}
+        WHERE 1=1 {team_filter} {srv_filter} AND GameDate {date_between}
         GROUP BY Player, HeroName ORDER BY Games DESC LIMIT 1
     """).fetchdf()
     if len(df) == 0:
@@ -339,13 +359,14 @@ def _fact_hero(con, team, srv_filter, date_between):
     return (f"Sở trường: <b>{r['Player']}</b> chơi <b>{r['HeroName']}</b> "
             f"{int(r['Games'])} trận, tỉ lệ thắng {r['WinRate']}%.")
 
-def render_insight_bot(con, team, srv_filter, date_between):
+def render_insight_bot(con, team, team_filter, srv_filter, date_between):
+    team_filter_p = build_team_filter(team, col_name="p.Team")
     builders = [
-        lambda: _fact_form(con, team, date_between),
-        lambda: _fact_grinder(con, team, date_between),
-        lambda: _fact_recent(con, team),
-        lambda: _fact_rankdrop(con, team, srv_filter),
-        lambda: _fact_hero(con, team, srv_filter, date_between),
+        lambda: _fact_form(con, team_filter, date_between),
+        lambda: _fact_grinder(con, team_filter, date_between),
+        lambda: _fact_recent(con, team_filter),
+        lambda: _fact_rankdrop(con, team_filter_p, srv_filter),
+        lambda: _fact_hero(con, team_filter, srv_filter, date_between),
     ]
     n = len(builders)
     if "fact_index" not in st.session_state:
@@ -385,7 +406,7 @@ with st.sidebar:
         WHERE Team IS NOT NULL ORDER BY Team
     """).fetchdf()
 
-    selected_team = st.selectbox("🏆 Đội", teams["Team"].tolist())
+    selected_team = st.selectbox("🏆 Đội", ["ALL"] + teams["Team"].tolist())
     selected_server = st.selectbox("🌐 Server", ["ALL", "VN", "TH", "TW"])
 
     st.markdown("---")
@@ -400,9 +421,10 @@ with st.sidebar:
     st.markdown("---")
 
     srv_filter = build_server_filter(selected_server)
+    team_filter = build_team_filter(selected_team)
     date_between = f"BETWEEN '{start_date.isoformat()}' AND '{end_date.isoformat()}'"
 
-    render_insight_bot(con, selected_team, srv_filter, date_between)
+    render_insight_bot(con, selected_team, team_filter, srv_filter, date_between)
 
     st.markdown(
         "<div style='text-align:center; color:#555; font-size:11px;'>"
@@ -426,13 +448,16 @@ tab_overview, tab_players, tab_heroes, tab_history, tab_compare, tab_profile, ta
 
 with tab_overview:
 
+    if selected_team == "ALL":
+        st.caption("📊 Đang xem: Tất cả đội")
+
     df_team = con.execute(f"""
         SELECT
             SUM(PlayerGames) AS TotalGames, SUM(UniqueMatches) AS UniqueMatches,
             ROUND(SUM(WinRate * PlayerGames) / NULLIF(SUM(PlayerGames), 0), 2) AS WinRate,
             ROUND(SUM(KDA * PlayerGames) / NULLIF(SUM(PlayerGames), 0), 2) AS KDA
         FROM report_team_daily
-        WHERE Team = '{selected_team}' AND GameDate {date_between}
+        WHERE 1=1 {team_filter} AND GameDate {date_between}
     """).fetchdf()
 
     c1, c2, c3, c4 = st.columns(4)
@@ -457,7 +482,7 @@ with tab_overview:
         SELECT GameDate, SUM(PlayerGames) AS Games, SUM(UniqueMatches) AS Matches,
             ROUND(SUM(WinRate * PlayerGames) / NULLIF(SUM(PlayerGames), 0), 2) AS WinRate
         FROM report_team_daily
-        WHERE Team = '{selected_team}' AND GameDate {date_between}
+        WHERE 1=1 {team_filter} AND GameDate {date_between}
         GROUP BY GameDate ORDER BY GameDate
     """).fetchdf()
 
@@ -486,7 +511,7 @@ with tab_overview:
             ROUND(SUM(KDA * PlayerGames) / NULLIF(SUM(PlayerGames), 0), 2) AS KDA,
             ROUND(SUM(MVPRate * PlayerGames) / NULLIF(SUM(PlayerGames), 0), 2) AS MVPRate
         FROM report_player_daily
-        WHERE Team = '{selected_team}' {srv_filter} AND GameDate {date_between}
+        WHERE 1=1 {team_filter} {srv_filter} AND GameDate {date_between}
         GROUP BY Player ORDER BY TotalGames DESC
     """).fetchdf()
 
@@ -506,7 +531,7 @@ with tab_overview:
     section_header("🏅 Phân Bố Rank Hiện Tại")
     df_rank_dist = con.execute(f"""
         SELECT RankName, COUNT(*) AS PlayerCount
-        FROM core_rank_latest WHERE Team = '{selected_team}' {srv_filter}
+        FROM core_rank_latest WHERE 1=1 {team_filter} {srv_filter}
         GROUP BY RankName ORDER BY RankName
     """).fetchdf()
 
@@ -554,15 +579,16 @@ with tab_overview:
                 SUM(CASE WHEN Server='VN' THEN PlayerGames ELSE 0 END) AS VN,
                 SUM(CASE WHEN Server='TH' THEN PlayerGames ELSE 0 END) AS TH,
                 SUM(CASE WHEN Server='TW' THEN PlayerGames ELSE 0 END) AS TW
-            FROM report_player_daily WHERE Team = '{selected_team}' AND GameDate {date_between}
+            FROM report_player_daily WHERE 1=1 {team_filter} AND GameDate {date_between}
         """).fetchdf()
 
+        pie_title = "Tất cả đội" if selected_team == "ALL" else selected_team
         pie1, pie2 = st.columns(2)
         with pie1:
             ranked_v = int(safe_val(df_mode_server, "Ranked"))
             normal_v = int(safe_val(df_mode_server, "Normal"))
             if ranked_v + normal_v > 0:
-                fig_mode = px.pie(names=["Ranked", "Normal"], values=[ranked_v, normal_v], hole=0.5, color_discrete_sequence=[COLORS["danger"], COLORS["info"]], title="Mode")
+                fig_mode = px.pie(names=["Ranked", "Normal"], values=[ranked_v, normal_v], hole=0.5, color_discrete_sequence=[COLORS["danger"], COLORS["info"]], title=f"Mode — {pie_title}")
                 fig_mode.update_layout(**plotly_layout(height=280, showlegend=True))
                 fig_mode.update_traces(textinfo="label+percent", textfont_size=11)
                 st.plotly_chart(fig_mode, use_container_width=True)
@@ -572,7 +598,7 @@ with tab_overview:
             tw_v = int(safe_val(df_mode_server, "TW"))
             servers = {k: v for k, v in {"VN": vn_v, "TH": th_v, "TW": tw_v}.items() if v > 0}
             if servers:
-                fig_srv = px.pie(names=list(servers.keys()), values=list(servers.values()), hole=0.5, color_discrete_sequence=[COLORS["primary"], COLORS["success"], COLORS["warning"]], title="Server")
+                fig_srv = px.pie(names=list(servers.keys()), values=list(servers.values()), hole=0.5, color_discrete_sequence=[COLORS["primary"], COLORS["success"], COLORS["warning"]], title=f"Server — {pie_title}")
                 fig_srv.update_layout(**plotly_layout(height=280, showlegend=True))
                 fig_srv.update_traces(textinfo="label+percent+value", textfont_size=11)
                 st.plotly_chart(fig_srv, use_container_width=True)
@@ -583,11 +609,14 @@ with tab_overview:
 
 with tab_players:
 
+    if selected_team == "ALL":
+        st.caption("📊 Đang xem: Tất cả đội")
+
     section_header("📋 Bảng Tổng Hợp Tuyển Thủ")
 
     df_all_players = con.execute(f"""
         SELECT
-            Player AS "Tuyển thủ", Server, Account AS "Tài khoản",
+            Team AS "Đội", Player AS "Tuyển thủ", Server, Account AS "Tài khoản",
             SUM(PlayerGames) AS "Lượt chơi", SUM(RankedGames) AS "Ranked",
             ROUND(SUM(WinRate * PlayerGames) / NULLIF(SUM(PlayerGames), 0), 2) AS "WR%",
             ROUND(SUM(KDA * PlayerGames) / NULLIF(SUM(PlayerGames), 0), 2) AS "KDA",
@@ -596,8 +625,8 @@ with tab_players:
             ROUND(SUM(AvgGold * PlayerGames) / NULLIF(SUM(PlayerGames), 0), 0) AS "Gold TB",
             ROUND(SUM(AvgFarm * PlayerGames) / NULLIF(SUM(PlayerGames), 0), 0) AS "Farm TB"
         FROM report_player_daily
-        WHERE Team = '{selected_team}' {srv_filter} AND GameDate {date_between}
-        GROUP BY Player, Server, Account
+        WHERE 1=1 {team_filter} {srv_filter} AND GameDate {date_between}
+        GROUP BY Team, Player, Server, Account
         ORDER BY "Lượt chơi" DESC
     """).fetchdf()
 
@@ -615,12 +644,9 @@ with tab_players:
     st.markdown("---")
     section_header("🔍 Chi Tiết Tuyển Thủ")
 
-    players_list = con.execute(f"""
-        SELECT DISTINCT Player FROM player_accounts
-        WHERE Team = '{selected_team}' AND Player IS NOT NULL ORDER BY Player
-    """).fetchdf()["Player"].tolist()
-
-    selected_player = st.selectbox("Chọn tuyển thủ", players_list)
+    players_list = player_option_list(con, team_filter, selected_team == "ALL")
+    selected_player_label = st.selectbox("Chọn tuyển thủ", players_list)
+    selected_player = parse_player_name(selected_player_label)
 
     if selected_player:
 
@@ -715,6 +741,9 @@ with tab_players:
 # =====================================================
 
 with tab_heroes:
+
+    if selected_team == "ALL":
+        st.caption("📊 Đang xem: Tất cả đội")
 
     st.caption("⚠️ Hero analytics chỉ sử dụng dữ liệu **Ranked** (Game_Mode='Ranked')")
     st.caption("📊 Số trận = COUNT(DISTINCT BattleID) — trận riêng biệt")
@@ -851,16 +880,17 @@ with tab_heroes:
 
 with tab_history:
 
+    if selected_team == "ALL":
+        st.caption("📊 Đang xem: Tất cả đội")
+
     section_header("📜 Lịch Sử Trận Đấu")
     st.caption("Dữ liệu row-level từ report_match_history — chỉ hiển thị, không aggregate")
 
     mh_col1, mh_col2, mh_col3 = st.columns(3)
     with mh_col1:
-        mh_players = con.execute(f"""
-            SELECT DISTINCT Player FROM player_accounts
-            WHERE Team = '{selected_team}' AND Player IS NOT NULL ORDER BY Player
-        """).fetchdf()["Player"].tolist()
-        mh_selected_player = st.selectbox("Tuyển thủ", ["Tất cả"] + mh_players, key="mh_player")
+        mh_players = player_option_list(con, team_filter, selected_team == "ALL")
+        mh_selected_label = st.selectbox("Tuyển thủ", ["Tất cả"] + mh_players, key="mh_player")
+        mh_selected_player = parse_player_name(mh_selected_label) if mh_selected_label != "Tất cả" else "Tất cả"
     with mh_col2:
         mh_mode = st.selectbox("Game Mode", ["Tất cả", "Ranked", "Normal"], key="mh_mode")
     with mh_col3:
@@ -868,7 +898,7 @@ with tab_history:
         mh_selected_hero = st.selectbox("Tướng", ["Tất cả"] + mh_heroes, key="mh_hero")
 
     # Build dynamic WHERE
-    mh_where = f"WHERE Team = '{selected_team}' AND Date_Time::DATE {date_between}"
+    mh_where = f"WHERE 1=1 {team_filter} AND Date_Time::DATE {date_between}"
     if mh_selected_player != "Tất cả":
         mh_where += f" AND Player = '{mh_selected_player}'"
     if selected_server != "ALL":
@@ -925,13 +955,13 @@ with tab_history:
 
 with tab_compare:
 
+    if selected_team == "ALL":
+        st.caption("📊 Đang xem: Tất cả đội")
+
     section_header("🔀 So Sánh Tuyển Thủ")
     st.caption("Radar chart so sánh — dữ liệu từ report_player_daily, chỉ visualization ở UI")
 
-    cmp_players_list = con.execute(f"""
-        SELECT DISTINCT Player FROM player_accounts
-        WHERE Team = '{selected_team}' AND Player IS NOT NULL ORDER BY Player
-    """).fetchdf()["Player"].tolist()
+    cmp_players_list = player_option_list(con, team_filter, selected_team == "ALL")
 
     cmp_selected = st.multiselect(
         "Chọn 2-5 tuyển thủ để so sánh", cmp_players_list,
@@ -940,7 +970,8 @@ with tab_compare:
     )
 
     if len(cmp_selected) >= 2:
-        players_in = ", ".join([f"'{p}'" for p in cmp_selected])
+        cmp_names = [parse_player_name(p) for p in cmp_selected]
+        players_in = ", ".join([f"'{p}'" for p in cmp_names])
 
         df_cmp = con.execute(f"""
             SELECT Player, SUM(PlayerGames) AS TotalGames,
@@ -951,7 +982,7 @@ with tab_compare:
                 ROUND(SUM(AvgGold * PlayerGames) / NULLIF(SUM(PlayerGames), 0), 0) AS AvgGold,
                 ROUND(SUM(AvgFarm * PlayerGames) / NULLIF(SUM(PlayerGames), 0), 0) AS AvgFarm
             FROM report_player_daily
-            WHERE Team = '{selected_team}' {srv_filter} AND GameDate {date_between}
+            WHERE 1=1 {team_filter} {srv_filter} AND GameDate {date_between}
               AND Player IN ({players_in})
             GROUP BY Player
         """).fetchdf()
@@ -1019,14 +1050,14 @@ with tab_compare:
 
 with tab_profile:
 
+    if selected_team == "ALL":
+        st.caption("📊 Đang xem: Tất cả đội")
+
     section_header("🗒️ Hồ Sơ Tuyển Thủ")
 
-    profile_players = con.execute(f"""
-        SELECT DISTINCT Player FROM player_accounts
-        WHERE Team = '{selected_team}' AND Player IS NOT NULL ORDER BY Player
-    """).fetchdf()["Player"].tolist()
-
-    profile_player = st.selectbox("Chọn tuyển thủ", profile_players, key="profile_player")
+    profile_players = player_option_list(con, team_filter, selected_team == "ALL")
+    profile_player_label = st.selectbox("Chọn tuyển thủ", profile_players, key="profile_player")
+    profile_player = parse_player_name(profile_player_label)
 
     if profile_player:
 
@@ -1137,6 +1168,9 @@ with tab_profile:
 
 with tab_behavior:
 
+    if selected_team == "ALL":
+        st.caption("📊 Đang xem: Tất cả đội")
+
     section_header("⚠️ Báo Cáo Hành Vi")
     st.caption("Dữ liệu từ hệ thống report: AFK, Feeding, Bad Words, Sabotage, Lane Stealing, Hack")
 
@@ -1145,7 +1179,7 @@ with tab_behavior:
             SUM(Bad_Words) AS Bad_Words, SUM(Sabotage) AS Sabotage,
             SUM(Lane_Stealing) AS Lane_Stealing, SUM(Hack) AS Hack
         FROM report_behavior
-        WHERE Team = '{selected_team}' {srv_filter} AND GameDate {date_between}
+        WHERE 1=1 {team_filter} {srv_filter} AND GameDate {date_between}
     """).fetchdf()
 
     bh_total = int(safe_val(df_bh_team, "Reports"))
@@ -1180,7 +1214,7 @@ with tab_behavior:
             SELECT GameDate, SUM(TotalReports) AS Reports, SUM(AFK) AS AFK,
                 SUM(Feeding) AS Feeding, SUM(Bad_Words) AS Bad_Words
             FROM report_behavior
-            WHERE Team = '{selected_team}' {srv_filter} AND GameDate {date_between}
+            WHERE 1=1 {team_filter} {srv_filter} AND GameDate {date_between}
             GROUP BY GameDate ORDER BY GameDate
         """).fetchdf()
 
@@ -1215,7 +1249,7 @@ with tab_behavior:
             SUM(Feeding) AS "Feeding", SUM(Bad_Words) AS "Bad Words", SUM(Sabotage) AS "Sabotage",
             SUM(Lane_Stealing) AS "Lane Steal", SUM(Hack) AS "Hack"
         FROM report_behavior
-        WHERE Team = '{selected_team}' {srv_filter} AND GameDate {date_between}
+        WHERE 1=1 {team_filter} {srv_filter} AND GameDate {date_between}
         GROUP BY Player ORDER BY "Tổng" DESC
     """).fetchdf()
 
@@ -1231,6 +1265,9 @@ with tab_behavior:
 
 with tab_rank:
 
+    if selected_team == "ALL":
+        st.caption("📊 Đang xem: Tất cả đội")
+
     section_header("🏅 Bảng Xếp Hạng Hiện Tại")
     st.caption("Hiển thị rank mới nhất theo TencentID (ROW_NUMBER by Date_Time DESC)")
 
@@ -1238,7 +1275,7 @@ with tab_rank:
         SELECT Player AS "Tuyển thủ", Server, Account AS "Tài khoản",
             RankName AS "Rank", Star_After AS "Sao", LastRankUpdate AS "Cập nhật lần cuối"
         FROM core_rank_latest
-        WHERE Team = '{selected_team}' {srv_filter}
+        WHERE 1=1 {team_filter} {srv_filter}
         ORDER BY Rank_After DESC, Star_After DESC
     """).fetchdf()
 
