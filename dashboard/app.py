@@ -4,6 +4,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import numpy as np
 from datetime import datetime, timedelta
+import random
 
 # =====================================================
 # CONFIG & CONNECTION
@@ -213,6 +214,165 @@ def load_hero_icons():
 hero_icon_map = load_hero_icons()
 
 # =====================================================
+# INSIGHT BOT — rotating data-driven facts (pure DuckDB, no API)
+# =====================================================
+
+def _fact_form(con, team, date_between):
+    df = con.execute(f"""
+        SELECT SUM(PlayerGames) AS TotalGames,
+            ROUND(SUM(WinRate * PlayerGames) / NULLIF(SUM(PlayerGames), 0), 2) AS WinRate,
+            ROUND(SUM(KDA * PlayerGames) / NULLIF(SUM(PlayerGames), 0), 2) AS KDA
+        FROM report_team_daily
+        WHERE Team = '{team}' AND GameDate {date_between}
+    """).fetchdf()
+    tg = int(safe_val(df, "TotalGames"))
+    if tg == 0:
+        return "Chưa có dữ liệu thi đấu trong khoảng thời gian này."
+    wr = float(safe_val(df, "WinRate"))
+    kda = float(safe_val(df, "KDA"))
+    parts = []
+    if wr >= 60:
+        parts.append(random.choice([
+            f"Đội đang có phong độ rất tốt với tỉ lệ thắng <b>{wr}%</b> qua {tg} lượt chơi.",
+            f"Form cực ổn — WinRate <b>{wr}%</b> trên tổng {tg} lượt. Giữ vững nhịp độ này!",
+        ]))
+    elif wr >= 45:
+        parts.append(random.choice([
+            f"Phong độ ổn định với tỉ lệ thắng <b>{wr}%</b> qua {tg} lượt chơi.",
+            f"WinRate <b>{wr}%</b> — đội đang cân bằng, vẫn còn dư địa bứt phá.",
+        ]))
+    else:
+        parts.append(random.choice([
+            f"Tỉ lệ thắng chỉ <b>{wr}%</b> qua {tg} lượt — cần xem lại chiến thuật.",
+            f"Form đang đi xuống: WinRate <b>{wr}%</b>. Nên tập trung sửa lỗi cơ bản.",
+        ]))
+    if kda >= 4:
+        parts.append(random.choice([
+            f"KDA trung bình {kda} cho thấy khả năng giao tranh xuất sắc.",
+            f"Chỉ số KDA {kda} rất cao — combat tốt.",
+        ]))
+    elif kda < 2.5:
+        parts.append(random.choice([
+            f"KDA {kda} hơi thấp, cần hạn chế chết không cần thiết.",
+            f"KDA chỉ {kda} — nên chơi an toàn và giữ mạng tốt hơn.",
+        ]))
+    return " ".join(parts)
+
+def _fact_grinder(con, team, date_between):
+    df = con.execute(f"""
+        SELECT Player, SUM(PlayerGames) AS Games, SUM(RankedGames) AS Ranked
+        FROM report_player_daily
+        WHERE Team = '{team}' AND GameDate {date_between}
+        GROUP BY Player ORDER BY Games DESC
+    """).fetchdf()
+    if len(df) == 0:
+        return "Chưa có tuyển thủ nào thi đấu trong giai đoạn này."
+    top = df.iloc[0]
+    text = f"Top grinder: <b>{top['Player']}</b> với {int(top['Games'])} lượt chơi trong giai đoạn."
+    grinders = df[df["Ranked"] >= 40]
+    if len(grinders) > 0:
+        names = ", ".join(grinders["Player"].head(3).tolist())
+        text += f" 🔥 Cày ranked 40+ trận: {names}."
+    return text
+
+def _fact_recent(con, team):
+    today = datetime.now().date()
+    d1 = (today - timedelta(days=1)).isoformat()
+    d3 = (today - timedelta(days=3)).isoformat()
+    d7 = (today - timedelta(days=7)).isoformat()
+    agg = con.execute(f"""
+        SELECT
+            SUM(CASE WHEN GameDate >= '{d1}' THEN PlayerGames ELSE 0 END) AS g1,
+            SUM(CASE WHEN GameDate >= '{d3}' THEN PlayerGames ELSE 0 END) AS g3,
+            SUM(CASE WHEN GameDate >= '{d7}' THEN PlayerGames ELSE 0 END) AS g7
+        FROM report_player_daily
+        WHERE Team = '{team}'
+    """).fetchdf()
+    g1, g3, g7 = int(safe_val(agg, "g1")), int(safe_val(agg, "g3")), int(safe_val(agg, "g7"))
+    if g7 == 0:
+        return "Không có hoạt động thi đấu nào trong 7 ngày qua."
+    top = con.execute(f"""
+        SELECT Player, Account, SUM(PlayerGames) AS Games
+        FROM report_player_daily
+        WHERE Team = '{team}' AND GameDate >= '{d7}'
+        GROUP BY Player, Account ORDER BY Games DESC LIMIT 1
+    """).fetchdf()
+    text = f"7 ngày qua: <b>{g7}</b> lượt (3 ngày: {g3}, hôm qua: {g1})."
+    if len(top) > 0:
+        r = top.iloc[0]
+        text += f" Chăm nhất: <b>{r['Player']}</b> ({r['Account']}) với {int(r['Games'])} lượt."
+    return text
+
+def _fact_rankdrop(con, team, srv_filter):
+    d7 = (datetime.now().date() - timedelta(days=7)).isoformat()
+    df = con.execute(f"""
+        WITH ordered AS (
+            SELECT TencentID, Rank_After, Date_Time,
+                LAG(Rank_After) OVER (PARTITION BY TencentID ORDER BY Date_Time) AS prev_rank
+            FROM rank_all
+        )
+        SELECT p.Player, p.Account, o.Date_Time
+        FROM ordered o
+        JOIN player_accounts p ON o.TencentID = p.TencentID
+        WHERE o.prev_rank IS NOT NULL
+          AND o.Rank_After < o.prev_rank
+          AND o.Date_Time::DATE >= '{d7}'
+          AND p.Team = '{team}' {srv_filter}
+        ORDER BY o.Date_Time DESC LIMIT 1
+    """).fetchdf()
+    if len(df) > 0:
+        r = df.iloc[0]
+        return f"⚠️ <b>{r['Player']}</b> bị xuống hạng gần đây tại account {r['Account']}."
+    return "✅ Không có tuyển thủ nào xuống hạng trong 7 ngày qua."
+
+def _fact_hero(con, team, srv_filter, date_between):
+    df = con.execute(f"""
+        SELECT Player, HeroName, SUM(PlayerGames) AS Games,
+            ROUND(SUM(WinRate * PlayerGames) / NULLIF(SUM(PlayerGames), 0), 1) AS WinRate
+        FROM report_player_hero
+        WHERE Team = '{team}' {srv_filter} AND GameDate {date_between}
+        GROUP BY Player, HeroName ORDER BY Games DESC LIMIT 1
+    """).fetchdf()
+    if len(df) == 0:
+        return "Chưa có dữ liệu tướng sở trường trong giai đoạn này."
+    r = df.iloc[0]
+    return (f"Sở trường: <b>{r['Player']}</b> chơi <b>{r['HeroName']}</b> "
+            f"{int(r['Games'])} trận, tỉ lệ thắng {r['WinRate']}%.")
+
+def render_insight_bot(con, team, srv_filter, date_between):
+    builders = [
+        lambda: _fact_form(con, team, date_between),
+        lambda: _fact_grinder(con, team, date_between),
+        lambda: _fact_recent(con, team),
+        lambda: _fact_rankdrop(con, team, srv_filter),
+        lambda: _fact_hero(con, team, srv_filter, date_between),
+    ]
+    n = len(builders)
+    if "fact_index" not in st.session_state:
+        st.session_state["fact_index"] = 0
+
+    card_slot = st.empty()
+    if st.button("🔄 Làm mới", key="insight_refresh", use_container_width=True):
+        st.session_state["fact_index"] = (st.session_state["fact_index"] + 1) % n
+
+    idx = st.session_state["fact_index"] % n
+    try:
+        fact_text = builders[idx]()
+    except Exception:
+        fact_text = "Không thể tải dữ liệu cho mục này."
+
+    card_slot.markdown(f"""
+        <div style="background:#0f0f1a; border-left:3px solid #a29bfe;
+                    border-radius:8px; padding:12px; margin-top:4px;">
+            <div style="color:#a29bfe; font-size:12px; font-weight:700;
+                        text-transform:uppercase; letter-spacing:0.5px; margin-bottom:6px;">
+                🤖 Insight Bot</div>
+            <div style="color:#c0c0e0; font-size:13px; line-height:1.6;">{fact_text}</div>
+            <div style="color:#555; font-size:11px; margin-top:8px;">Fact {idx + 1}/{n}</div>
+        </div>
+    """, unsafe_allow_html=True)
+
+# =====================================================
 # SIDEBAR
 # =====================================================
 
@@ -238,14 +398,17 @@ with st.sidebar:
         end_date = st.date_input("Đến ngày", value=datetime.now())
 
     st.markdown("---")
+
+    srv_filter = build_server_filter(selected_server)
+    date_between = f"BETWEEN '{start_date.isoformat()}' AND '{end_date.isoformat()}'"
+
+    render_insight_bot(con, selected_team, srv_filter, date_between)
+
     st.markdown(
         "<div style='text-align:center; color:#555; font-size:11px;'>"
         "Timezone: Asia/Ho_Chi_Minh<br>Source: Reporting Views</div>",
         unsafe_allow_html=True
     )
-
-srv_filter = build_server_filter(selected_server)
-date_between = f"BETWEEN '{start_date.isoformat()}' AND '{end_date.isoformat()}'"
 
 # =====================================================
 # TABS (added: Lịch Sử Trận, So Sánh)
