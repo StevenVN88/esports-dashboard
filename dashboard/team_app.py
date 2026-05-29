@@ -54,7 +54,6 @@ if not token_param or token_param not in TOKEN_MAP:
     st.stop()
 
 selected_team = TOKEN_MAP[token_param]
-
 st.markdown("""
 <style>
     #MainMenu {visibility: hidden;} footer {visibility: hidden;}
