@@ -255,26 +255,47 @@ def _fact_form(con, team_filter, date_between):
         parts.append(random.choice([
             f"Đội đang có phong độ rất tốt với tỉ lệ thắng <b>{wr}%</b> qua {tg} lượt chơi.",
             f"Form cực ổn — WinRate <b>{wr}%</b> trên tổng {tg} lượt. Giữ vững nhịp độ này!",
+            f"🔥 WinRate <b>{wr}%</b> — đội đang thống trị. Tiếp tục duy trì!",
+            f"Hiệu suất ấn tượng: <b>{wr}%</b> tỉ lệ thắng trên {tg} lượt. Đội đang trong guồng tốt.",
+            f"<b>{wr}%</b> WinRate — top form. {tg} lượt chơi cho thấy sự chăm chỉ và hiệu quả.",
+            f"Đang bùng cháy 🔥 — <b>{wr}%</b> thắng qua {tg} lượt. Đây là momentum tốt trước giải.",
+            f"Consistency cao: <b>{wr}%</b> WinRate trên {tg} lượt. Đội đang rất ổn định.",
         ]))
     elif wr >= 45:
         parts.append(random.choice([
             f"Phong độ ổn định với tỉ lệ thắng <b>{wr}%</b> qua {tg} lượt chơi.",
             f"WinRate <b>{wr}%</b> — đội đang cân bằng, vẫn còn dư địa bứt phá.",
+            f"<b>{wr}%</b> WinRate — gần ngưỡng tốt rồi. Cần thêm một chút để bứt lên.",
+            f"Trung bình khá với <b>{wr}%</b> qua {tg} lượt. Tập trung cải thiện early game.",
+            f"WinRate <b>{wr}%</b> — ổn nhưng chưa đủ. Cần consistency hơn trong {tg} lượt tiếp theo.",
+            f"Dao động quanh <b>{wr}%</b> — đội cần tìm lại phong độ đỉnh. Xem lại replay các trận thua.",
+            f"<b>{wr}%</b> thắng — tiềm năng còn nhiều. Tập trung vào teamfight và objective control.",
         ]))
     else:
         parts.append(random.choice([
             f"Tỉ lệ thắng chỉ <b>{wr}%</b> qua {tg} lượt — cần xem lại chiến thuật.",
             f"Form đang đi xuống: WinRate <b>{wr}%</b>. Nên tập trung sửa lỗi cơ bản.",
+            f"⚠️ <b>{wr}%</b> WinRate — dưới mức kỳ vọng. Nên review lại draft và chiến thuật.",
+            f"Khó khăn với <b>{wr}%</b> thắng qua {tg} lượt. Cần session phân tích replay gấp.",
+            f"WinRate <b>{wr}%</b> đang báo động. Tập trung sửa coordination và communication.",
+            f"Chỉ <b>{wr}%</b> — đây là lúc cần reset và làm lại từ fundamentals.",
+            f"<b>{wr}%</b> WinRate qua {tg} lượt. Coach nên xem lại hero pool và ban/pick strategy.",
         ]))
     if kda >= 4:
         parts.append(random.choice([
             f"KDA trung bình {kda} cho thấy khả năng giao tranh xuất sắc.",
             f"Chỉ số KDA {kda} rất cao — combat tốt.",
+            f"KDA {kda} 🎯 — khả năng sống sót và giao tranh đang ở mức elite.",
+            f"Ấn tượng với KDA {kda} — ít chết, nhiều kill/assist. Đây là nền tảng để win game.",
+            f"KDA {kda} xuất sắc — đội đang chơi rất clean, tránh được những cái chết không cần thiết.",
         ]))
     elif kda < 2.5:
         parts.append(random.choice([
             f"KDA {kda} hơi thấp, cần hạn chế chết không cần thiết.",
             f"KDA chỉ {kda} — nên chơi an toàn và giữ mạng tốt hơn.",
+            f"⚠️ KDA {kda} — đang chết quá nhiều. Cần positioning tốt hơn trong teamfight.",
+            f"KDA {kda} cần cải thiện. Hãy ưu tiên survival hơn là aggressive play.",
+            f"Chỉ số KDA {kda} cho thấy đội đang overextend. Cần discipline hơn trong lối chơi.",
         ]))
     return " ".join(parts)
 
