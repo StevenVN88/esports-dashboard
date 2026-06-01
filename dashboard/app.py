@@ -309,7 +309,13 @@ def _fact_grinder(con, team_filter, date_between):
     if len(df) == 0:
         return "Chưa có tuyển thủ nào thi đấu trong giai đoạn này."
     top = df.iloc[0]
-    text = f"Top grinder: <b>{top['Player']}</b> với {int(top['Games'])} lượt chơi trong giai đoạn."
+    player = top["Player"]
+    games = int(top["Games"])
+    text = random.choice([
+        f"Top grinder: <b>{player}</b> với {games} lượt chơi trong giai đoạn.",
+        f"Chăm chỉ nhất là <b>{player}</b> — {games} lượt chơi trong kỳ.",
+        f"<b>{player}</b> dẫn đầu khối lượng tập với {games} lượt chơi.",
+    ])
     grinders = df[df["Ranked"] >= 40]
     if len(grinders) > 0:
         names = ", ".join(grinders["Player"].head(3).tolist())
@@ -331,18 +337,26 @@ def _fact_recent(con, team_filter):
     """).fetchdf()
     g1, g3, g7 = int(safe_val(agg, "g1")), int(safe_val(agg, "g3")), int(safe_val(agg, "g7"))
     if g7 == 0:
-        return "Không có hoạt động thi đấu nào trong 7 ngày qua."
+        return random.choice([
+            "Không có hoạt động thi đấu nào trong 7 ngày qua.",
+            "7 ngày qua đội không có trận nào — cần quay lại tập luyện.",
+            "Im ắng 7 ngày qua: chưa ghi nhận lượt chơi nào.",
+        ])
     top = con.execute(f"""
         SELECT Player, Account, SUM(PlayerGames) AS Games
         FROM report_player_daily
         WHERE 1=1 {team_filter} AND GameDate >= '{d7}'
         GROUP BY Player, Account ORDER BY Games DESC LIMIT 1
     """).fetchdf()
-    text = f"7 ngày qua: <b>{g7}</b> lượt (3 ngày: {g3}, hôm qua: {g1})."
+    suffix = ""
     if len(top) > 0:
         r = top.iloc[0]
-        text += f" Chăm nhất: <b>{r['Player']}</b> ({r['Account']}) với {int(r['Games'])} lượt."
-    return text
+        suffix = f" Chăm nhất: <b>{r['Player']}</b> ({r['Account']}) với {int(r['Games'])} lượt."
+    return random.choice([
+        f"7 ngày qua: <b>{g7}</b> lượt (3 ngày: {g3}, hôm qua: {g1}).{suffix}",
+        f"Hoạt động gần đây — tuần: <b>{g7}</b> lượt, 3 ngày: {g3}, hôm qua: {g1}.{suffix}",
+        f"Nhịp độ 7 ngày: <b>{g7}</b> lượt chơi (3 ngày {g3}, hôm qua {g1}).{suffix}",
+    ])
 
 def _fact_rankdrop(con, team_filter_p, srv_filter):
     d7 = (datetime.now().date() - timedelta(days=7)).isoformat()
@@ -363,8 +377,17 @@ def _fact_rankdrop(con, team_filter_p, srv_filter):
     """).fetchdf()
     if len(df) > 0:
         r = df.iloc[0]
-        return f"⚠️ <b>{r['Player']}</b> bị xuống hạng gần đây tại account {r['Account']}."
-    return "✅ Không có tuyển thủ nào xuống hạng trong 7 ngày qua."
+        player = r["Player"]; account = r["Account"]
+        return random.choice([
+            f"⚠️ <b>{player}</b> bị xuống hạng gần đây tại account {account}.",
+            f"⚠️ Cảnh báo tụt hạng: <b>{player}</b> (account {account}) trong 7 ngày qua.",
+            f"⚠️ <b>{player}</b> vừa rớt hạng ở account {account} — cần để ý.",
+        ])
+    return random.choice([
+        "✅ Không có tuyển thủ nào xuống hạng trong 7 ngày qua.",
+        "✅ 7 ngày qua không ai tụt hạng — phong độ rank ổn định.",
+        "✅ Rank an toàn: không có ca xuống hạng nào trong tuần.",
+    ])
 
 def _fact_hero(con, team_filter, srv_filter, date_between):
     df = con.execute(f"""
@@ -377,8 +400,12 @@ def _fact_hero(con, team_filter, srv_filter, date_between):
     if len(df) == 0:
         return "Chưa có dữ liệu tướng sở trường trong giai đoạn này."
     r = df.iloc[0]
-    return (f"Sở trường: <b>{r['Player']}</b> chơi <b>{r['HeroName']}</b> "
-            f"{int(r['Games'])} trận, tỉ lệ thắng {r['WinRate']}%.")
+    player = r["Player"]; hero = r["HeroName"]; games = int(r["Games"]); wr = r["WinRate"]
+    return random.choice([
+        f"Sở trường: <b>{player}</b> chơi <b>{hero}</b> {games} trận, tỉ lệ thắng {wr}%.",
+        f"<b>{player}</b> tủ <b>{hero}</b> ({games} trận, WR {wr}%).",
+        f"Signature pick: <b>{player}</b> với <b>{hero}</b> — {games} trận, thắng {wr}%.",
+    ])
 
 def render_insight_bot(con, team, team_filter, srv_filter, date_between):
     team_filter_p = build_team_filter(team, col_name="p.Team")

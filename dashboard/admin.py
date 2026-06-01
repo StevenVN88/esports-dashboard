@@ -198,6 +198,44 @@ st.caption(f"DB: `{DB_PATH}`  •  Repo: `{REPO_DIR}`")
 st.warning("⚠️ Đóng dashboard chính (app.py) trước khi Rebuild để tránh khóa file DB.")
 
 # =====================================================
+# SECTION 0 — REBUILD DB NHANH (không cần upload CSV)
+# =====================================================
+
+section_header("🔧 Rebuild DB Nhanh")
+st.info("Dùng khi: sửa code views/app.py, DB bị lỗi, không cần upload CSV mới.")
+
+if st.button("🔧 Rebuild DB Now", use_container_width=True):
+    try:
+        _t = duckdb.connect(DB_PATH, read_only=False)
+        _t.close()
+    except Exception as e:
+        st.error(f"⛔ DB đang bị lock bởi tiến trình khác (app.py đang chạy?): {e}")
+        st.error("Đóng dashboard chính trước khi rebuild.")
+        st.stop()
+
+    prog = st.progress(0.0, text="Bắt đầu...")
+    n = len(REBUILD_STEPS)
+    failed = False
+    for i, (script, label) in enumerate(REBUILD_STEPS):
+        prog.progress(i / n, text=f"[{i+1}/{n}] {label}...")
+        rc, out, err = run_script(script)
+        ok = rc == 0
+        with st.expander(f"[{i+1}/{n}] {script} — {'✅ OK' if ok else '❌ LỖI'}", expanded=not ok):
+            if out:
+                st.code(out)
+            if err:
+                st.code(err)
+        if not ok:
+            prog.progress((i + 1) / n, text="Thất bại")
+            st.error(f"❌ Bước `{script}` thất bại (exit {rc}). Dừng pipeline.")
+            failed = True
+            break
+    if not failed:
+        prog.progress(1.0, text="Hoàn tất!")
+        st.session_state["rebuild_done"] = True
+        st.success("✅ Rebuild xong. Vào Section 3 để push lên GitHub.")
+
+# =====================================================
 # SECTION 1 — UPLOAD & MERGE
 # =====================================================
 
