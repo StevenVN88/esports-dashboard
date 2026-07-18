@@ -1,7 +1,3 @@
-# Team access tokens
-# Format: token = team_name
-# Đổi token bất cứ lúc nào để revoke access
-
 [tokens]
 bx7Kf9mQ2vL = "BOX"
 fT5aHc1dN4x = "FPT"
@@ -11,3 +7,5 @@ hV7yDj5nC1f = "FPL"
 tN6xRi4cF3v = "1S"
 mK8wPj2nD5q = "GAM"
 vL3xTf9bR7s = "TS"
+7w4p7wCxn5X = "BOM"
+tNAokHOK6GW = "RRQ"
