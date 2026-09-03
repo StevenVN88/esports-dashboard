@@ -22,14 +22,14 @@ from datetime import datetime
 
 ADMIN_PASSWORD = "esports2024"          # local-only gate, no secrets needed
 
-REPO_DIR = r"D:\EsportsAI"
+REPO_DIR = r"D:\Projects\EsportsAI"
 DATA_DIR = os.path.join(REPO_DIR, "data")
 DB_PATH = os.path.join(REPO_DIR, "db", "esports.duckdb")
 
 # Team access — team_app.py reads tokens from .streamlit/team_tokens.toml
 TOML_PATH = os.path.join(REPO_DIR, ".streamlit", "team_tokens.toml")
 TEAM_APP_URL = "https://aovteam.streamlit.app"
-TEAM_ORDER = ["BOX", "FPT", "SGP", "SPN", "FPL", "1S", "GAM", "TS"]
+TEAM_ORDER = ["BOX", "FPT", "SGP", "FPL", "1S", "GAM", "TS", "BOM", "RRQ"]
 
 # EXACT same config as scripts/merge_csv.py
 MERGE_CONFIG = {
